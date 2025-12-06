@@ -5,7 +5,7 @@
 
 use std::env;
 
-use crate::components::TerminalCapabilities;
+use crate::components::{ColorSupport, TerminalCapabilities};
 use crate::config::AutoDetect;
 
 /// Terminal detector for capability detection
@@ -32,15 +32,15 @@ impl TerminalDetector {
         // Check if we should force text mode
         if force_text {
             return TerminalCapabilities {
-                supports_colors: false,
+                color_support: ColorSupport::None,
                 supports_emoji: false,
                 supports_nerd_font: false,
             };
         }
 
         // Detect individual capabilities
-        let supports_colors = if force_nerd_font || force_emoji {
-            true // If we're forcing special fonts, assume color support
+        let color_support = if force_nerd_font || force_emoji {
+            ColorSupport::TrueColor // If we're forcing special fonts, assume full color support
         } else {
             Self::detect_color_support(enable_colors)
         };
@@ -62,28 +62,116 @@ impl TerminalDetector {
         // Debug output to help troubleshoot detection issues
         if std::env::var("DEBUG").is_ok() {
             eprintln!("[调试] 终端能力检测结果:");
-            eprintln!("  - supports_colors: {supports_colors}");
+            eprintln!("  - color_support: {color_support:?}");
             eprintln!("  - supports_emoji: {supports_emoji}");
             eprintln!("  - supports_nerd_font: {supports_nerd_font}");
             eprintln!("  - TERM_PROGRAM: {:?}", std::env::var("TERM_PROGRAM"));
             eprintln!("  - TERM: {:?}", std::env::var("TERM"));
+            eprintln!("  - COLORTERM: {:?}", std::env::var("COLORTERM"));
         }
 
         TerminalCapabilities {
-            supports_colors,
+            color_support,
             supports_emoji,
             supports_nerd_font,
         }
     }
 
-    /// Detect color support
-    fn detect_color_support(enable_colors: &AutoDetect) -> bool {
+    /// Detect color support level
+    fn detect_color_support(enable_colors: &AutoDetect) -> ColorSupport {
         match enable_colors {
-            AutoDetect::Bool(false) => false,
-            AutoDetect::Bool(true) => true,
+            AutoDetect::Bool(false) => ColorSupport::None,
+            AutoDetect::Bool(true) => ColorSupport::TrueColor, // Explicit enable assumes full support
             AutoDetect::Auto(_) => {
                 // Auto-detect based on environment
-                Self::check_color_env_vars()
+                Self::detect_color_level()
+            }
+        }
+    }
+
+    /// Detect the actual color support level from environment
+    fn detect_color_level() -> ColorSupport {
+        // Check NO_COLOR env var first (https://no-color.org/)
+        if env::var("NO_COLOR").is_ok() {
+            return ColorSupport::None;
+        }
+
+        // Check COLORTERM for truecolor support
+        if let Ok(colorterm) = env::var("COLORTERM") {
+            if colorterm == "truecolor" || colorterm == "24bit" {
+                return ColorSupport::TrueColor;
+            }
+        }
+
+        // Check for Windows Terminal (supports truecolor)
+        if env::var("WT_SESSION").is_ok() {
+            return ColorSupport::TrueColor;
+        }
+
+        // Check TERM_PROGRAM for known truecolor terminals
+        if let Ok(term_program) = env::var("TERM_PROGRAM") {
+            match term_program.as_str() {
+                "iTerm.app" | "Hyper" | "vscode" => return ColorSupport::TrueColor,
+                "Apple_Terminal" => return ColorSupport::Extended256, // macOS Terminal: 256 only
+                _ => {}
+            }
+        }
+
+        // Check for modern terminals that support truecolor
+        if let Ok(term) = env::var("TERM") {
+            // Terminals known to support truecolor
+            if term.contains("kitty")
+                || term.contains("alacritty")
+                || term.contains("wezterm")
+                || term.contains("foot")
+            {
+                return ColorSupport::TrueColor;
+            }
+
+            // 256 color terminals
+            if term.contains("256color") {
+                return ColorSupport::Extended256;
+            }
+
+            // Basic color terminals
+            if term.contains("color")
+                || term == "xterm"
+                || term == "screen"
+                || term == "tmux"
+                || term == "rxvt"
+                || term == "linux"
+            {
+                return ColorSupport::Basic16;
+            }
+        }
+
+        // Check for GNOME Terminal and Konsole (both support truecolor)
+        if env::var("GNOME_TERMINAL_SERVICE").is_ok() || env::var("KONSOLE_VERSION").is_ok() {
+            return ColorSupport::TrueColor;
+        }
+
+        // Check if running in CI/CD environments (usually support 256 colors)
+        if env::var("CI").is_ok()
+            || env::var("GITHUB_ACTIONS").is_ok()
+            || env::var("GITLAB_CI").is_ok()
+            || env::var("BUILDKITE").is_ok()
+            || env::var("CIRCLECI").is_ok()
+        {
+            return ColorSupport::Extended256;
+        }
+
+        // Default based on platform
+        #[cfg(unix)]
+        {
+            ColorSupport::Basic16 // Safe default for Unix
+        }
+        #[cfg(not(unix))]
+        {
+            // On Windows, check if we're in ConEmu
+            if env::var("ConEmuPID").is_ok() {
+                ColorSupport::TrueColor
+            } else {
+                ColorSupport::Basic16
             }
         }
     }
@@ -109,55 +197,6 @@ impl TerminalDetector {
                 // Auto-detect based on font environment
                 Self::check_nerd_font_env()
             }
-        }
-    }
-
-    /// Check environment variables for color support
-    fn check_color_env_vars() -> bool {
-        // Check COLORTERM for truecolor support
-        if let Ok(colorterm) = env::var("COLORTERM") {
-            if colorterm == "truecolor" || colorterm == "24bit" {
-                return true;
-            }
-        }
-
-        // Check TERM for color support
-        if let Ok(term) = env::var("TERM") {
-            if term.contains("256color")
-                || term.contains("color")
-                || term == "xterm"
-                || term == "screen"
-                || term == "tmux"
-                || term == "rxvt"
-            {
-                return true;
-            }
-        }
-
-        // Check NO_COLOR env var (https://no-color.org/)
-        if env::var("NO_COLOR").is_ok() {
-            return false;
-        }
-
-        // Check if running in CI/CD environments
-        if env::var("CI").is_ok()
-            || env::var("GITHUB_ACTIONS").is_ok()
-            || env::var("GITLAB_CI").is_ok()
-            || env::var("BUILDKITE").is_ok()
-            || env::var("CIRCLECI").is_ok()
-        {
-            return true; // Most CI environments support colors
-        }
-
-        // Default to true on Unix-like systems, false on others
-        #[cfg(unix)]
-        {
-            true
-        }
-        #[cfg(not(unix))]
-        {
-            // On Windows, check if we're in Windows Terminal or ConEmu
-            env::var("WT_SESSION").is_ok() || env::var("ConEmuPID").is_ok()
         }
     }
 
@@ -289,7 +328,7 @@ mod tests {
             true, // force_text
         );
 
-        assert!(!caps.supports_colors);
+        assert_eq!(caps.color_support, ColorSupport::None);
         assert!(!caps.supports_emoji);
         assert!(!caps.supports_nerd_font);
     }
@@ -307,7 +346,7 @@ mod tests {
         );
 
         assert!(caps.supports_nerd_font);
-        assert!(caps.supports_colors); // Should be enabled with Nerd Font
+        assert_eq!(caps.color_support, ColorSupport::TrueColor); // Should have full color with Nerd Font
     }
 
     #[test]
@@ -323,7 +362,7 @@ mod tests {
         );
 
         assert!(caps.supports_emoji);
-        assert!(caps.supports_colors); // Should be enabled with emoji
+        assert_eq!(caps.color_support, ColorSupport::TrueColor); // Should have full color with emoji
     }
 
     #[test]
@@ -338,7 +377,7 @@ mod tests {
             false,
         );
 
-        assert!(!caps.supports_colors);
+        assert_eq!(caps.color_support, ColorSupport::None);
         assert!(!caps.supports_emoji);
         assert!(!caps.supports_nerd_font);
     }
@@ -355,8 +394,26 @@ mod tests {
             false,
         );
 
-        assert!(caps.supports_colors);
+        assert_eq!(caps.color_support, ColorSupport::TrueColor);
         assert!(caps.supports_emoji);
         assert!(caps.supports_nerd_font);
+    }
+
+    #[test]
+    fn test_color_support_methods() {
+        assert!(!ColorSupport::None.has_colors());
+        assert!(ColorSupport::Basic16.has_colors());
+        assert!(ColorSupport::Extended256.has_colors());
+        assert!(ColorSupport::TrueColor.has_colors());
+
+        assert!(!ColorSupport::None.has_true_color());
+        assert!(!ColorSupport::Basic16.has_true_color());
+        assert!(!ColorSupport::Extended256.has_true_color());
+        assert!(ColorSupport::TrueColor.has_true_color());
+
+        assert!(!ColorSupport::None.has_256_colors());
+        assert!(!ColorSupport::Basic16.has_256_colors());
+        assert!(ColorSupport::Extended256.has_256_colors());
+        assert!(ColorSupport::TrueColor.has_256_colors());
     }
 }

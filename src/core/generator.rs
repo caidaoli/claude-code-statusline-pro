@@ -363,7 +363,7 @@ impl StatuslineGenerator {
 
         if self.config.debug {
             eprintln!("[调试] 终端能力检测结果:");
-            eprintln!("  - supports_colors: {}", caps.supports_colors);
+            eprintln!("  - color_support: {:?}", caps.color_support);
             eprintln!("  - supports_emoji: {}", caps.supports_emoji);
             eprintln!("  - supports_nerd_font: {}", caps.supports_nerd_font);
             eprintln!("  - TERM_PROGRAM: {:?}", std::env::var("TERM_PROGRAM"));

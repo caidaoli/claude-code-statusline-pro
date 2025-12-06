@@ -14,6 +14,8 @@ use tokio::fs;
 
 use crate::components::base::RenderContext;
 use crate::components::base::TerminalCapabilities;
+#[cfg(test)]
+use crate::components::ColorSupport;
 use crate::config::component_widgets::{
     ComponentMultilineConfig, WidgetApiConfig, WidgetApiMethod, WidgetConfig, WidgetFilterConfig,
     WidgetFilterMode, WidgetType,
@@ -1325,7 +1327,7 @@ content = "Hello"
             input: Arc::new(InputData::default()),
             config: Arc::new(config),
             terminal: TerminalCapabilities {
-                supports_colors: true,
+                color_support: ColorSupport::TrueColor,
                 supports_emoji: true,
                 supports_nerd_font: false,
             },

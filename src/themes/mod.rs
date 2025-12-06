@@ -5,7 +5,7 @@
 use anyhow::Result;
 use crossterm::style::{Color, Stylize};
 
-use crate::components::{ComponentOutput, RenderContext};
+use crate::components::{ColorSupport, ComponentOutput, RenderContext};
 
 pub mod capsule;
 pub mod classic;
@@ -49,12 +49,159 @@ pub(crate) fn colorize_segment(
 
 pub(crate) const ANSI_RESET: &str = "\x1b[0m";
 
-pub(crate) fn ansi_fg(color: &str) -> Option<String> {
-    resolve_color(color).map(|(r, g, b)| format!("\x1b[38;2;{r};{g};{b}m"))
+/// Generate foreground ANSI escape sequence based on color support level
+pub(crate) fn ansi_fg_with_support(color: &str, color_support: ColorSupport) -> Option<String> {
+    let rgb = resolve_color(color)?;
+    Some(format_fg_color(rgb, color_support))
 }
 
+/// Generate background ANSI escape sequence based on color support level
+pub(crate) fn ansi_bg_with_support(color: &str, color_support: ColorSupport) -> Option<String> {
+    let rgb = resolve_color(color)?;
+    Some(format_bg_color(rgb, color_support))
+}
+
+/// Legacy function - assumes TrueColor support
+pub(crate) fn ansi_fg(color: &str) -> Option<String> {
+    ansi_fg_with_support(color, ColorSupport::TrueColor)
+}
+
+/// Legacy function - assumes TrueColor support
 pub(crate) fn ansi_bg(color: &str) -> Option<String> {
-    resolve_color(color).map(|(r, g, b)| format!("\x1b[48;2;{r};{g};{b}m"))
+    ansi_bg_with_support(color, ColorSupport::TrueColor)
+}
+
+/// Format foreground color based on support level
+fn format_fg_color(rgb: (u8, u8, u8), color_support: ColorSupport) -> String {
+    let (r, g, b) = rgb;
+    match color_support {
+        ColorSupport::None => String::new(),
+        ColorSupport::Basic16 => {
+            let ansi = rgb_to_ansi16(r, g, b);
+            format!("\x1b[{}m", ansi)
+        }
+        ColorSupport::Extended256 => {
+            let code = rgb_to_ansi256(r, g, b);
+            format!("\x1b[38;5;{code}m")
+        }
+        ColorSupport::TrueColor => {
+            format!("\x1b[38;2;{r};{g};{b}m")
+        }
+    }
+}
+
+/// Format background color based on support level
+fn format_bg_color(rgb: (u8, u8, u8), color_support: ColorSupport) -> String {
+    let (r, g, b) = rgb;
+    match color_support {
+        ColorSupport::None => String::new(),
+        ColorSupport::Basic16 => {
+            let ansi = rgb_to_ansi16(r, g, b);
+            // Convert foreground code to background code (add 10)
+            let bg_code = if ansi >= 90 { ansi + 10 } else { ansi + 10 };
+            format!("\x1b[{}m", bg_code)
+        }
+        ColorSupport::Extended256 => {
+            let code = rgb_to_ansi256(r, g, b);
+            format!("\x1b[48;5;{code}m")
+        }
+        ColorSupport::TrueColor => {
+            format!("\x1b[48;2;{r};{g};{b}m")
+        }
+    }
+}
+
+/// Convert RGB to nearest ANSI 256 color code
+fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
+    // Check if it's a grayscale color
+    if r == g && g == b {
+        if r < 8 {
+            return 16; // Black
+        }
+        if r > 248 {
+            return 231; // White
+        }
+        // Grayscale ramp: 232-255 (24 shades)
+        #[allow(clippy::cast_possible_truncation)]
+        return ((f32::from(r) - 8.0) / 247.0 * 24.0).round() as u8 + 232;
+    }
+
+    // Convert to 6x6x6 color cube (16-231)
+    let to_cube = |v: u8| -> u8 {
+        if v < 48 {
+            0
+        } else if v < 115 {
+            1
+        } else {
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                ((f32::from(v) - 35.0) / 40.0).min(5.0) as u8
+            }
+        }
+    };
+
+    let ri = to_cube(r);
+    let gi = to_cube(g);
+    let bi = to_cube(b);
+
+    16 + 36 * ri + 6 * gi + bi
+}
+
+/// Convert RGB to nearest ANSI 16 color code (foreground)
+fn rgb_to_ansi16(r: u8, g: u8, b: u8) -> u8 {
+    // Calculate perceived brightness
+    let brightness =
+        (f32::from(r) * 0.299 + f32::from(g) * 0.587 + f32::from(b) * 0.114) / 255.0;
+    let is_bright = brightness > 0.5;
+
+    // Find the dominant color(s)
+    let max_val = r.max(g).max(b);
+    let min_val = r.min(g).min(b);
+    let saturation = if max_val == 0 {
+        0.0
+    } else {
+        f32::from(max_val - min_val) / f32::from(max_val)
+    };
+
+    // Low saturation = grayscale
+    if saturation < 0.2 {
+        return if brightness < 0.25 {
+            30 // Black
+        } else if brightness < 0.75 {
+            if is_bright { 37 } else { 90 } // Gray
+        } else {
+            97 // White (bright)
+        };
+    }
+
+    // Determine base color from RGB ratios
+    let base = if r >= g && r >= b {
+        if g > b && g > r / 2 {
+            33 // Yellow (red + green)
+        } else if b > g && b > r / 2 {
+            35 // Magenta (red + blue)
+        } else {
+            31 // Red
+        }
+    } else if g >= r && g >= b {
+        if b > r && b > g / 2 {
+            36 // Cyan (green + blue)
+        } else {
+            32 // Green
+        }
+    } else {
+        // Blue is dominant
+        if r > g && r > b / 2 {
+            35 // Magenta
+        } else if g > r && g > b / 2 {
+            36 // Cyan
+        } else {
+            34 // Blue
+        }
+    };
+
+    // Add 60 for bright variant
+    if is_bright { base + 60 } else { base }
 }
 
 pub(crate) fn reapply_background(content: &str, bg_seq: &str) -> String {

@@ -407,7 +407,7 @@ fn handle_config_init(
         target_path: Some(target_path.as_path()),
         theme: init_args.theme.as_deref(),
         capabilities: Some(TerminalCapabilityHint {
-            colors: capabilities.supports_colors,
+            colors: capabilities.supports_colors(),
             emoji: capabilities.supports_emoji,
             nerd_font: capabilities.supports_nerd_font,
         }),
@@ -428,7 +428,7 @@ fn handle_config_init(
         );
         println!(
             "  - 终端能力检测: colors={} emoji={} nerd_font={}",
-            capabilities.supports_colors,
+            capabilities.supports_colors(),
             capabilities.supports_emoji,
             capabilities.supports_nerd_font
         );
@@ -598,7 +598,7 @@ async fn handle_doctor() -> Result<()> {
         "终端: {}",
         std::env::var("TERM").unwrap_or_else(|_| "未知".to_string())
     );
-    println!("颜色支持: {}", bool_icon(capabilities.supports_colors));
+    println!("颜色支持: {:?}", capabilities.color_support);
     println!("Emoji 支持: {}", bool_icon(capabilities.supports_emoji));
     println!(
         "Nerd Font 支持: {}",

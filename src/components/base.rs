@@ -10,21 +10,63 @@ use crate::{
 use async_trait::async_trait;
 use std::sync::Arc;
 
+/// Terminal color support level
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColorSupport {
+    /// No color support
+    None,
+    /// Basic ANSI 16 colors
+    Basic16,
+    /// Extended 256 colors
+    Extended256,
+    /// True color (24-bit RGB)
+    #[default]
+    TrueColor,
+}
+
+impl ColorSupport {
+    /// Check if any color is supported
+    #[must_use]
+    pub fn has_colors(&self) -> bool {
+        !matches!(self, ColorSupport::None)
+    }
+
+    /// Check if true color (24-bit) is supported
+    #[must_use]
+    pub fn has_true_color(&self) -> bool {
+        matches!(self, ColorSupport::TrueColor)
+    }
+
+    /// Check if at least 256 colors are supported
+    #[must_use]
+    pub fn has_256_colors(&self) -> bool {
+        matches!(self, ColorSupport::Extended256 | ColorSupport::TrueColor)
+    }
+}
+
 /// Terminal capabilities for rendering decisions
 #[derive(Debug, Clone)]
 pub struct TerminalCapabilities {
-    /// Whether terminal supports ANSI colors
-    pub supports_colors: bool,
+    /// Terminal color support level
+    pub color_support: ColorSupport,
     /// Whether terminal supports emoji
     pub supports_emoji: bool,
     /// Whether terminal supports Nerd Font icons
     pub supports_nerd_font: bool,
 }
 
+impl TerminalCapabilities {
+    /// Check if terminal supports colors (for backward compatibility)
+    #[must_use]
+    pub fn supports_colors(&self) -> bool {
+        self.color_support.has_colors()
+    }
+}
+
 impl Default for TerminalCapabilities {
     fn default() -> Self {
         Self {
-            supports_colors: true,
+            color_support: ColorSupport::TrueColor,
             supports_emoji: true,
             supports_nerd_font: false,
         }

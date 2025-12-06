@@ -1,6 +1,8 @@
 //! 实用工具模块
 //!
-//! 当前仅包含跨平台 home 目录解析辅助函数。
+//! 包含跨平台 home 目录解析和模型 ID 解析等辅助函数。
+
+pub mod model_parser;
 
 use std::env;
 use std::path::PathBuf;

@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use super::base::{Component, ComponentFactory, ComponentOutput, RenderContext};
 use crate::config::{BaseComponentConfig, Config, TokensComponentConfig};
 use crate::storage;
+use crate::utils::model_parser::parse_model_id;
 
 #[derive(Clone, Debug)]
 struct TokenUsageInfo {
@@ -87,8 +88,16 @@ impl TokensComponent {
         };
 
         if let Some(id) = model.id.as_ref() {
+            // Priority 1: Exact match from config
             if let Some(value) = self.config.context_windows.get(id) {
                 return *value;
+            }
+
+            // Priority 2: Infer from model ID params (e.g., [1m])
+            if let Some(parsed) = parse_model_id(id) {
+                if let Some(window) = parsed.infer_context_window() {
+                    return window;
+                }
             }
         }
 
@@ -107,7 +116,7 @@ impl TokensComponent {
 
         let gradient_enabled = self.config.show_gradient
             || matches!(ctx.config.theme.as_str(), "powerline" | "capsule");
-        let supports_colors = ctx.terminal.supports_colors;
+        let supports_colors = ctx.terminal.supports_colors();
 
         let filled_char = self
             .config
@@ -399,7 +408,7 @@ impl ComponentFactory for TokensComponentFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::TerminalCapabilities;
+    use crate::components::{ColorSupport, TerminalCapabilities};
     use crate::config::AutoDetect;
     use crate::core::InputData;
     use serde_json::json;
@@ -500,7 +509,7 @@ mod tests {
         config.theme = "classic".to_string();
         config.style.enable_colors = AutoDetect::Bool(true);
         let mut terminal = ctx.terminal.clone();
-        terminal.supports_colors = true;
+        terminal.color_support = ColorSupport::TrueColor;
         let ctx = RenderContext { terminal, ..ctx };
 
         let output = component.render(&ctx).await;
@@ -578,5 +587,128 @@ mod tests {
 
         assert!(output.visible);
         assert!(output.text.contains("(20/100)"));
+    }
+
+    // ==================== 上下文窗口智能推断测试 ====================
+
+    #[tokio::test]
+    async fn test_context_window_infer_1m_model() {
+        use crate::core::ModelInfo;
+
+        let input = build_input(|input| {
+            input.session_id = Some("mock-session".to_string());
+            input.model = Some(ModelInfo {
+                id: Some("claude-sonnet-4-5-20250929[1m]".to_string()),
+                display_name: None,
+            });
+            input.extra = json!({
+                "__mock__": {
+                    "tokensUsage": {
+                        "context_used": 100_000u64
+                    }
+                }
+            });
+        });
+
+        let ctx = RenderContext {
+            input: Arc::new(input),
+            config: Arc::new(Config::default()),
+            terminal: TerminalCapabilities::default(),
+        };
+
+        let config = build_tokens_config(|config| {
+            config.show_progress_bar = false;
+            config.show_percentage = false;
+            config.show_raw_numbers = true;
+        });
+
+        let component = TokensComponent::new(config);
+        let output = component.render(&ctx).await;
+
+        assert!(output.visible);
+        // Should infer 1M context window from [1m] suffix
+        assert!(output.text.contains("(100000/1000000)"));
+    }
+
+    #[tokio::test]
+    async fn test_context_window_exact_match_takes_priority() {
+        use crate::core::ModelInfo;
+
+        let input = build_input(|input| {
+            input.session_id = Some("mock-session".to_string());
+            input.model = Some(ModelInfo {
+                id: Some("claude-sonnet-4-5-20250929[1m]".to_string()),
+                display_name: None,
+            });
+            input.extra = json!({
+                "__mock__": {
+                    "tokensUsage": {
+                        "context_used": 50_000u64
+                    }
+                }
+            });
+        });
+
+        let ctx = RenderContext {
+            input: Arc::new(input),
+            config: Arc::new(Config::default()),
+            terminal: TerminalCapabilities::default(),
+        };
+
+        let config = build_tokens_config(|config| {
+            config.show_progress_bar = false;
+            config.show_percentage = false;
+            config.show_raw_numbers = true;
+            // Exact match should take priority over inference
+            config
+                .context_windows
+                .insert("claude-sonnet-4-5-20250929[1m]".to_string(), 500_000);
+        });
+
+        let component = TokensComponent::new(config);
+        let output = component.render(&ctx).await;
+
+        assert!(output.visible);
+        // Should use exact match (500k) instead of inferred (1M)
+        assert!(output.text.contains("(50000/500000)"));
+    }
+
+    #[tokio::test]
+    async fn test_context_window_fallback_to_default() {
+        use crate::core::ModelInfo;
+
+        let input = build_input(|input| {
+            input.session_id = Some("mock-session".to_string());
+            input.model = Some(ModelInfo {
+                id: Some("claude-opus-4-1-20250805".to_string()), // No [1m] suffix
+                display_name: None,
+            });
+            input.extra = json!({
+                "__mock__": {
+                    "tokensUsage": {
+                        "context_used": 10_000u64
+                    }
+                }
+            });
+        });
+
+        let ctx = RenderContext {
+            input: Arc::new(input),
+            config: Arc::new(Config::default()),
+            terminal: TerminalCapabilities::default(),
+        };
+
+        let config = build_tokens_config(|config| {
+            config.show_progress_bar = false;
+            config.show_percentage = false;
+            config.show_raw_numbers = true;
+        });
+
+        let component = TokensComponent::new(config);
+        let output = component.render(&ctx).await;
+
+        assert!(output.visible);
+        // Should fallback to default 200k
+        assert!(output.text.contains("(10000/200000)"));
     }
 }

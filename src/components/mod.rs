@@ -11,7 +11,10 @@ pub mod tokens;
 pub mod usage;
 
 // Re-export commonly used types
-pub use base::{Component, ComponentFactory, ComponentOutput, RenderContext, TerminalCapabilities};
+pub use base::{
+    ColorSupport, Component, ComponentFactory, ComponentOutput, RenderContext,
+    TerminalCapabilities,
+};
 pub use branch::{BranchComponent, BranchComponentFactory};
 pub use model::{ModelComponent, ModelComponentFactory};
 pub use project::{ProjectComponent, ProjectComponentFactory};

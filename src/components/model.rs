@@ -4,6 +4,7 @@
 
 use super::base::{Component, ComponentFactory, ComponentOutput, RenderContext};
 use crate::config::{BaseComponentConfig, Config, ModelComponentConfig};
+use crate::utils::model_parser::parse_model_id;
 use async_trait::async_trait;
 
 /// Model component
@@ -36,7 +37,7 @@ impl ModelComponent {
             }
 
             // Priority 2: Try intelligent parsing fallback
-            if let Some(parsed) = Self::parse_model_id(id) {
+            if let Some(parsed) = parse_model_id(id) {
                 return Some(if self.config.show_full_name {
                     parsed.long_name()
                 } else {
@@ -51,105 +52,6 @@ impl ModelComponent {
         // No ID available, try display_name
         model.display_name.clone()
     }
-
-    /// Parse a model ID into structured components
-    ///
-    /// Format: {provider}-{series}-{major}-{minor}-{date}[{params}]
-    /// Example: claude-sonnet-4-5-20250929[1m]
-    fn parse_model_id(id: &str) -> Option<ParsedModelId> {
-        // Extract params (e.g., "[1m]") if present
-        let (base_id, params) = id.find('[').map_or((id, ""), |bracket_start| {
-            (&id[..bracket_start], &id[bracket_start..])
-        });
-
-        // Split by '-' to get parts
-        let parts: Vec<&str> = base_id.split('-').collect();
-
-        // Expect at least: provider-series-major-...-date
-        // Minimum 4 parts: provider-series-major-date
-        if parts.len() < 4 {
-            return None;
-        }
-
-        let provider = parts[0];
-        let series = parts[1];
-
-        // Determine version: could be major-minor-date or just major-date
-        // Look for numeric patterns after series name
-        let mut version_parts = Vec::new();
-        let mut idx = 2;
-
-        // Collect version numbers (major and optional minor)
-        while idx < parts.len() {
-            if parts[idx].parse::<u32>().is_ok() {
-                // This looks like a version number or date
-                // Date is always 8 digits (YYYYMMDD)
-                if parts[idx].len() == 8 {
-                    // This is the date, stop here
-                    break;
-                }
-                version_parts.push(parts[idx]);
-                idx += 1;
-            } else {
-                // Non-numeric part after series, invalid format
-                return None;
-            }
-        }
-
-        if version_parts.is_empty() {
-            return None;
-        }
-
-        // Format version: "4-5" -> "4.5", "4" -> "4"
-        let version = version_parts.join(".");
-
-        Some(ParsedModelId {
-            provider: provider.to_string(),
-            series: series.to_string(),
-            version,
-            params: params.to_string(),
-        })
-    }
-}
-
-/// Parsed model ID components
-struct ParsedModelId {
-    #[allow(dead_code)]
-    provider: String, // "claude", future: "gemini", "gpt", etc.
-    series: String,  // "sonnet", "opus", "haiku"
-    version: String, // "4.5", "3", "4.1"
-    params: String,  // "[1m]" or ""
-}
-
-impl ParsedModelId {
-    /// Generate short name (e.g., "S4.5[1m]")
-    fn short_name(&self) -> String {
-        let series_initial = self
-            .series
-            .chars()
-            .next()
-            .map(|c| c.to_uppercase().to_string())
-            .unwrap_or_default();
-
-        format!("{}{}{}", series_initial, self.version, self.params)
-    }
-
-    /// Generate long name (e.g., "Sonnet 4.5[1m]")
-    fn long_name(&self) -> String {
-        let series_cap = capitalize(&self.series);
-
-        format!("{} {}{}", series_cap, self.version, self.params)
-    }
-}
-
-/// Capitalize first letter of a string
-fn capitalize(s: &str) -> String {
-    let mut chars = s.chars();
-    chars.next().map_or_else(String::new, |first| {
-        let mut result = first.to_uppercase().to_string();
-        result.push_str(&chars.as_str().to_lowercase());
-        result
-    })
 }
 
 #[async_trait]
@@ -206,10 +108,7 @@ mod tests {
     use super::*;
     use crate::components::TerminalCapabilities;
     use crate::core::{InputData, ModelInfo};
-    use anyhow::{anyhow, Result};
     use std::sync::Arc;
-
-    type TestResult = Result<()>;
 
     #[allow(clippy::field_reassign_with_default)]
     fn build_model_config(
@@ -240,53 +139,6 @@ mod tests {
             config: Arc::new(Config::default()),
             terminal: TerminalCapabilities::default(),
         }
-    }
-
-    // ==================== 智能解析测试 ====================
-
-    #[test]
-    fn test_parse_model_id_with_minor_version_and_params() -> TestResult {
-        let parsed = ModelComponent::parse_model_id("claude-sonnet-4-5-20250929[1m]")
-            .ok_or_else(|| anyhow!("failed to parse model id"))?;
-
-        assert_eq!(parsed.provider, "claude");
-        assert_eq!(parsed.series, "sonnet");
-        assert_eq!(parsed.version, "4.5");
-        assert_eq!(parsed.params, "[1m]");
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_model_id_major_version_only() -> TestResult {
-        let parsed = ModelComponent::parse_model_id("claude-haiku-3-20240307")
-            .ok_or_else(|| anyhow!("failed to parse model id"))?;
-
-        assert_eq!(parsed.provider, "claude");
-        assert_eq!(parsed.series, "haiku");
-        assert_eq!(parsed.version, "3");
-        assert_eq!(parsed.params, "");
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_model_id_with_minor_no_params() -> TestResult {
-        let parsed = ModelComponent::parse_model_id("claude-opus-4-1-20250805")
-            .ok_or_else(|| anyhow!("failed to parse model id"))?;
-
-        assert_eq!(parsed.provider, "claude");
-        assert_eq!(parsed.series, "opus");
-        assert_eq!(parsed.version, "4.1");
-        assert_eq!(parsed.params, "");
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_model_id_invalid_format() {
-        // Too few parts
-        assert!(ModelComponent::parse_model_id("claude-sonnet").is_none());
-
-        // Non-numeric version
-        assert!(ModelComponent::parse_model_id("claude-sonnet-abc-20250929").is_none());
     }
 
     // ==================== 短名称生成测试 ====================
@@ -468,15 +320,5 @@ mod tests {
 
         let output = component.render(&ctx).await;
         assert!(!output.visible);
-    }
-
-    // ==================== 大小写测试 ====================
-
-    #[test]
-    fn test_capitalize() {
-        assert_eq!(capitalize("sonnet"), "Sonnet");
-        assert_eq!(capitalize("OPUS"), "Opus");
-        assert_eq!(capitalize("h"), "H");
-        assert_eq!(capitalize(""), "");
     }
 }

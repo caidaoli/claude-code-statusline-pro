@@ -152,12 +152,12 @@ impl ThemeRenderer for CapsuleThemeRenderer {
             return Ok(String::new());
         }
 
-        let supports_colors = context.terminal.supports_colors
+        let supports_colors = context.terminal.supports_colors()
             && context
                 .config
                 .style
                 .enable_colors
-                .is_enabled(context.terminal.supports_colors);
+                .is_enabled(context.terminal.supports_colors());
         let use_capsule =
             context.terminal.supports_nerd_font || context.config.terminal.force_nerd_font;
 
@@ -199,7 +199,7 @@ impl Default for CapsuleThemeRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::TerminalCapabilities;
+    use crate::components::{ColorSupport, TerminalCapabilities};
     use crate::config::{AutoDetect, Config};
     use crate::core::InputData;
     use std::error::Error;
@@ -215,7 +215,7 @@ mod tests {
             input: Arc::new(InputData::default()),
             config: Arc::new(config),
             terminal: TerminalCapabilities {
-                supports_colors: colors,
+                color_support: if colors { ColorSupport::TrueColor } else { ColorSupport::None },
                 supports_emoji: true,
                 supports_nerd_font: nerd_font,
             },

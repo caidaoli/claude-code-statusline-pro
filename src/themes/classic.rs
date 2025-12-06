@@ -35,12 +35,12 @@ impl ThemeRenderer for ClassicThemeRenderer {
         _colors: &[String],
         context: &RenderContext,
     ) -> Result<String> {
-        let supports_colors = context.terminal.supports_colors
+        let supports_colors = context.terminal.supports_colors()
             && context
                 .config
                 .style
                 .enable_colors
-                .is_enabled(context.terminal.supports_colors);
+                .is_enabled(context.terminal.supports_colors());
 
         // Determine separator string (respect before/after spacing)
         let style = &context.config.style;
@@ -117,7 +117,7 @@ impl Default for ClassicThemeRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::TerminalCapabilities;
+    use crate::components::{ColorSupport, TerminalCapabilities};
     use crate::config::{AutoDetect, Config};
     use crate::core::InputData;
     use std::error::Error;
@@ -133,7 +133,7 @@ mod tests {
             input: Arc::new(InputData::default()),
             config: Arc::new(config),
             terminal: TerminalCapabilities {
-                supports_colors: false,
+                color_support: ColorSupport::None,
                 ..Default::default()
             },
         }
@@ -199,7 +199,7 @@ mod tests {
             input: Arc::new(InputData::default()),
             config: Arc::new(config),
             terminal: TerminalCapabilities {
-                supports_colors: false,
+                color_support: ColorSupport::None,
                 ..Default::default()
             },
         };

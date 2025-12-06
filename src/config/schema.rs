@@ -289,7 +289,7 @@ impl Default for ModelComponentConfig {
                 icon_color: "white".to_string(),
                 text_color: "white".to_string(),
                 emoji_icon: "🤖".to_string(),
-                nerd_icon: "\u{f544}".to_string(),
+                nerd_icon: "\u{f09d1}".to_string(),
                 text_icon: "[M]".to_string(),
             },
             show_full_name: false,
