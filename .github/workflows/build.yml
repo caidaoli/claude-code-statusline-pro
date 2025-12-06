@@ -30,7 +30,7 @@ jobs:
             binary: claude-code-statusline-pro
             artifact: linux-arm64
             use_cross: true
-          - os: macos-15-large
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             platform: macos-x64
             binary: claude-code-statusline-pro
