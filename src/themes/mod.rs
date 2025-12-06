@@ -61,12 +61,12 @@ pub(crate) fn ansi_bg_with_support(color: &str, color_support: ColorSupport) -> 
     Some(format_bg_color(rgb, color_support))
 }
 
-/// Legacy function - assumes TrueColor support
+/// Legacy function - assumes `TrueColor` support
 pub(crate) fn ansi_fg(color: &str) -> Option<String> {
     ansi_fg_with_support(color, ColorSupport::TrueColor)
 }
 
-/// Legacy function - assumes TrueColor support
+/// Legacy function - assumes `TrueColor` support
 pub(crate) fn ansi_bg(color: &str) -> Option<String> {
     ansi_bg_with_support(color, ColorSupport::TrueColor)
 }
@@ -78,7 +78,7 @@ fn format_fg_color(rgb: (u8, u8, u8), color_support: ColorSupport) -> String {
         ColorSupport::None => String::new(),
         ColorSupport::Basic16 => {
             let ansi = rgb_to_ansi16(r, g, b);
-            format!("\x1b[{}m", ansi)
+            format!("\x1b[{ansi}m")
         }
         ColorSupport::Extended256 => {
             let code = rgb_to_ansi256(r, g, b);
@@ -98,8 +98,8 @@ fn format_bg_color(rgb: (u8, u8, u8), color_support: ColorSupport) -> String {
         ColorSupport::Basic16 => {
             let ansi = rgb_to_ansi16(r, g, b);
             // Convert foreground code to background code (add 10)
-            let bg_code = if ansi >= 90 { ansi + 10 } else { ansi + 10 };
-            format!("\x1b[{}m", bg_code)
+            let bg_code = ansi + 10;
+            format!("\x1b[{bg_code}m")
         }
         ColorSupport::Extended256 => {
             let code = rgb_to_ansi256(r, g, b);
@@ -122,7 +122,7 @@ fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
             return 231; // White
         }
         // Grayscale ramp: 232-255 (24 shades)
-        #[allow(clippy::cast_possible_truncation)]
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         return ((f32::from(r) - 8.0) / 247.0 * 24.0).round() as u8 + 232;
     }
 
@@ -133,7 +133,7 @@ fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
         } else if v < 115 {
             1
         } else {
-            #[allow(clippy::cast_possible_truncation)]
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             {
                 ((f32::from(v) - 35.0) / 40.0).min(5.0) as u8
             }
@@ -151,7 +151,7 @@ fn rgb_to_ansi256(r: u8, g: u8, b: u8) -> u8 {
 fn rgb_to_ansi16(r: u8, g: u8, b: u8) -> u8 {
     // Calculate perceived brightness
     let brightness =
-        (f32::from(r) * 0.299 + f32::from(g) * 0.587 + f32::from(b) * 0.114) / 255.0;
+        f32::from(r).mul_add(0.299, f32::from(g).mul_add(0.587, f32::from(b) * 0.114)) / 255.0;
     let is_bright = brightness > 0.5;
 
     // Find the dominant color(s)
@@ -168,7 +168,11 @@ fn rgb_to_ansi16(r: u8, g: u8, b: u8) -> u8 {
         return if brightness < 0.25 {
             30 // Black
         } else if brightness < 0.75 {
-            if is_bright { 37 } else { 90 } // Gray
+            if is_bright {
+                37
+            } else {
+                90
+            } // Gray
         } else {
             97 // White (bright)
         };
@@ -201,7 +205,11 @@ fn rgb_to_ansi16(r: u8, g: u8, b: u8) -> u8 {
     };
 
     // Add 60 for bright variant
-    if is_bright { base + 60 } else { base }
+    if is_bright {
+        base + 60
+    } else {
+        base
+    }
 }
 
 pub(crate) fn reapply_background(content: &str, bg_seq: &str) -> String {

@@ -27,20 +27,20 @@ pub enum ColorSupport {
 impl ColorSupport {
     /// Check if any color is supported
     #[must_use]
-    pub fn has_colors(&self) -> bool {
-        !matches!(self, ColorSupport::None)
+    pub const fn has_colors(&self) -> bool {
+        !matches!(self, Self::None)
     }
 
     /// Check if true color (24-bit) is supported
     #[must_use]
-    pub fn has_true_color(&self) -> bool {
-        matches!(self, ColorSupport::TrueColor)
+    pub const fn has_true_color(&self) -> bool {
+        matches!(self, Self::TrueColor)
     }
 
     /// Check if at least 256 colors are supported
     #[must_use]
-    pub fn has_256_colors(&self) -> bool {
-        matches!(self, ColorSupport::Extended256 | ColorSupport::TrueColor)
+    pub const fn has_256_colors(&self) -> bool {
+        matches!(self, Self::Extended256 | Self::TrueColor)
     }
 }
 
@@ -58,7 +58,7 @@ pub struct TerminalCapabilities {
 impl TerminalCapabilities {
     /// Check if terminal supports colors (for backward compatibility)
     #[must_use]
-    pub fn supports_colors(&self) -> bool {
+    pub const fn supports_colors(&self) -> bool {
         self.color_support.has_colors()
     }
 }

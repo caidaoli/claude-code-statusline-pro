@@ -21,17 +21,12 @@ pub struct ComponentMultilineMeta {
 }
 
 /// Supported widget types.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum WidgetType {
+    #[default]
     Static,
     Api,
-}
-
-impl Default for WidgetType {
-    fn default() -> Self {
-        Self::Static
-    }
 }
 
 /// Widget configuration
@@ -104,34 +99,24 @@ impl Default for WidgetFilterConfig {
 }
 
 /// Filtering mode
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum WidgetFilterMode {
+    #[default]
     Equals,
     Contains,
     Pattern,
 }
 
-impl Default for WidgetFilterMode {
-    fn default() -> Self {
-        Self::Equals
-    }
-}
-
 /// HTTP method for API widgets
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum WidgetApiMethod {
+    #[default]
     GET,
     POST,
     PUT,
     DELETE,
-}
-
-impl Default for WidgetApiMethod {
-    fn default() -> Self {
-        Self::GET
-    }
 }
 
 /// API configuration for API widgets

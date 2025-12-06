@@ -215,7 +215,11 @@ mod tests {
             input: Arc::new(InputData::default()),
             config: Arc::new(config),
             terminal: TerminalCapabilities {
-                color_support: if colors { ColorSupport::TrueColor } else { ColorSupport::None },
+                color_support: if colors {
+                    ColorSupport::TrueColor
+                } else {
+                    ColorSupport::None
+                },
                 supports_emoji: true,
                 supports_nerd_font: nerd_font,
             },

@@ -5,6 +5,7 @@ use std::fs;
 use tempfile::tempdir;
 
 #[test]
+#[allow(deprecated)]
 fn cli_mock_scenario_runs() {
     let mut cmd = Command::cargo_bin("claude-code-statusline-pro").expect("binary available");
     let assert = cmd.arg("--mock").arg("dev").assert().success();
@@ -12,6 +13,7 @@ fn cli_mock_scenario_runs() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn cli_config_init_force_creates_files() {
     let temp_home = tempdir().expect("create temp home");
     let mut cmd = Command::cargo_bin("claude-code-statusline-pro").expect("binary available");
