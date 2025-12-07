@@ -531,7 +531,7 @@ impl Default for TokensComponentConfig {
             },
             show_zero: false,
             format: default_compact(),
-            show_progress_bar: false,
+            show_progress_bar: true,
             show_percentage: true,
             show_raw_numbers: false,
             progress_width: default_progress_width(),
